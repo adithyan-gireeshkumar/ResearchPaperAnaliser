@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pymupdf
+numpy
+faiss-cpu
+groq
+langdetect
+scikit-learn
+pydantic
+langgraph

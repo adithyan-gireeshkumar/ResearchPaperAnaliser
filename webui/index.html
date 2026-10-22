@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PaperLens | Research Paper Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark">✦</span>
+          <span>PaperLens</span>
+        </a>
+        <div class="connection"><span class="pulse"></span> Research workspace</div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="eyebrow">RESEARCH PAPER ASSISTANT</div>
+          <h1>Understand the paper.<br /><em>Move the work forward.</em></h1>
+          <p class="hero-copy">Upload a paper to get an instant research brief, then ask grounded questions in any language.</p>
+        </section>
+
+        <section class="workspace">
+          <aside class="upload-panel">
+            <div class="panel-heading">
+              <div>
+                <span class="step">01</span>
+                <h2>Bring your paper</h2>
+              </div>
+              <span class="file-type">PDF</span>
+            </div>
+            <label class="dropzone" id="dropzone" for="file-input">
+              <input id="file-input" type="file" accept="application/pdf,.pdf" />
+              <span class="upload-icon">↑</span>
+              <strong id="drop-title">Drop your PDF here</strong>
+              <span id="drop-subtitle">or click to browse your files</span>
+            </label>
+            <div class="selected-file" id="selected-file" hidden>
+              <span class="document-icon">▤</span>
+              <span id="file-name"></span>
+              <button id="clear-file" type="button" aria-label="Remove selected file">×</button>
+            </div>
+            <label class="key-label" for="api-key">Groq API key <span>(optional if set in .env)</span></label>
+            <input id="api-key" class="text-input" type="password" placeholder="gsk_..." autocomplete="off" />
+            <button class="primary-button" id="upload-button" type="button" disabled>
+              <span>Analyze paper</span><span>→</span>
+            </button>
+            <p class="privacy-note">Your paper is processed locally and held only for this session.</p>
+          </aside>
+
+          <section class="results-panel" id="results-panel">
+            <div class="empty-state" id="empty-state">
+              <div class="orb"><span>✦</span></div>
+              <span class="step">02</span>
+              <h2>Your research brief</h2>
+              <p>Upload a paper to reveal its summary, contributions, and key terminology.</p>
+            </div>
+            <div class="loading-state" id="loading-state" hidden>
+              <div class="spinner"></div>
+              <span>Reading your paper...</span>
+              <small>Extracting structure and finding the important details</small>
+            </div>
+            <div class="brief" id="brief" hidden>
+              <div class="brief-header">
+                <div>
+                  <span class="step">02 / RESEARCH BRIEF</span>
+                  <h2 id="paper-title"></h2>
+                  <span class="meta" id="paper-meta"></span>
+                </div>
+                <button class="ghost-button" id="new-paper" type="button">New paper</button>
+              </div>
+              <div class="brief-grid">
+                <article class="brief-card summary-card">
+                  <span class="card-label">AT A GLANCE</span>
+                  <h3>Summary</h3>
+                  <div class="markdown-content" id="summary"></div>
+                </article>
+                <article class="brief-card">
+                  <span class="card-label">WHY IT MATTERS</span>
+                  <h3>Contributions</h3>
+                  <div class="markdown-content" id="contributions"></div>
+                </article>
+                <article class="brief-card">
+                  <span class="card-label">BUILDING BLOCKS</span>
+                  <h3>Technical terms</h3>
+                  <div class="markdown-content" id="technical-terms"></div>
+                </article>
+              </div>
+              <div class="chat-section">
+                <div class="chat-heading">
+                  <div><span class="card-label">03 / EXPLORE</span><h3>Ask the paper</h3></div>
+                  <span class="language-hint">Answers grounded in your PDF</span>
+                </div>
+                <div class="messages" id="messages">
+                  <div class="message assistant-message">Ask me about the methods, findings, authors, or anything else in the paper.</div>
+                </div>
+                <form class="question-form" id="question-form">
+                  <input id="question" type="text" placeholder="What is the central research question?" autocomplete="off" />
+                  <button type="submit" aria-label="Ask question">↑</button>
+                </form>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
