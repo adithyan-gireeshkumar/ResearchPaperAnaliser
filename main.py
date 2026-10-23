@@ -1,25 +1,19 @@
 import os
 import re
 import uuid
-import pickle
 import textwrap
-import warnings
+from collections import Counter
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 import fitz  # PyMuPDF
 import numpy as np
-import faiss
 from groq import Groq
 from langdetect import detect
-from sklearn.decomposition import TruncatedSVD
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from langgraph.graph import StateGraph, END
 
 # --- Load Environment Variables ---
 def load_env_vars():
@@ -81,41 +75,57 @@ def chunk_pages(pages: List[Dict[str, Any]], size: int = 350, step: int = 150) -
             meta.append({"page": page_num, "offset": i})
     return chunks, meta
 
-class FAISSStore:
-    """TF-IDF + LSA -> L2-normalised dense vectors -> FAISS IndexFlatIP (cosine similarity)."""
+class TfidfStore:
+    """A compact NumPy TF-IDF index using cosine similarity."""
     def __init__(self, chunks: List[str], meta: List[Dict[str, Any]], dim: int = 256):
         self.chunks = chunks
         self.meta = meta
-        self.vectorizer = TfidfVectorizer(
-            max_features=80000,
-            ngram_range=(1, 2),
-            sublinear_tf=True
+        self.token_pattern = re.compile(r"(?u)\b\w\w+\b")
+        tokenized = [self._tokens(chunk) for chunk in chunks]
+        document_frequency = Counter(
+            token for tokens in tokenized for token in set(tokens)
         )
-        X_sp = self.vectorizer.fit_transform(chunks)
-        real_dim = min(dim, X_sp.shape[1] - 1, X_sp.shape[0] - 1)
-        self.dim = max(1, real_dim)  # Make sure dim is at least 1
-        
-        self.svd = TruncatedSVD(n_components=self.dim, random_state=42)
-        X_dense = self.svd.fit_transform(X_sp).astype(np.float32)
-        faiss.normalize_L2(X_dense)
-        
-        self.index = faiss.IndexFlatIP(self.dim)
-        self.index.add(X_dense)
+        vocabulary = [
+            token for token, count in document_frequency.most_common(80000)
+            if count >= 1
+        ]
+        self.vocabulary = {token: i for i, token in enumerate(vocabulary)}
+        self.idf = np.log(
+            (1 + len(chunks))
+            / (1 + np.array(
+                [document_frequency[token] for token in vocabulary],
+                dtype=np.float32,
+            ))
+        ) + 1
+        self.index = self._embed_documents(tokenized)
+
+    def _tokens(self, text: str) -> List[str]:
+        return self.token_pattern.findall(text.lower())
+
+    def _embed_documents(self, documents: List[List[str]]) -> np.ndarray:
+        vectors = np.zeros((len(documents), len(self.vocabulary)), dtype=np.float32)
+        for row, tokens in enumerate(documents):
+            counts = Counter(tokens)
+            for token, count in counts.items():
+                column = self.vocabulary.get(token)
+                if column is not None:
+                    vectors[row, column] = (1 + np.log(count)) * self.idf[column]
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        return vectors / np.maximum(norms, 1e-12)
 
     def _embed(self, text: str) -> np.ndarray:
-        x = self.svd.transform(self.vectorizer.transform([text])).astype(np.float32)
-        faiss.normalize_L2(x)
-        return x
+        return self._embed_documents([self._tokens(text)])[0]
 
     def search(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
-        scores, idxs = self.index.search(self._embed(query), k)
+        scores = self.index @ self._embed(query)
+        idxs = np.argsort(scores)[::-1][:k]
         return [
             {
                 "text": self.chunks[i],
-                "score": float(scores[0][r]),
+                "score": float(scores[i]),
                 "page": self.meta[i]["page"],
             }
-            for r, i in enumerate(idxs[0]) if i != -1
+            for i in idxs
         ]
 
 # --- Groq LLM Wrapper ---
@@ -236,25 +246,6 @@ def node_answer(state: ChatState) -> ChatState:
     state.answer = llm.chat(sys_prompt, user_msg, max_tokens=700)
     return state
 
-# --- Compile StateGraph ---
-builder = StateGraph(ChatState)
-builder.add_node("detect_language", node_detect_language)
-builder.add_node("planner",         node_planner)
-builder.add_node("retriever",       node_retrieve)
-builder.add_node("answer",          node_answer)
-
-builder.set_entry_point("detect_language")
-builder.add_edge("detect_language", "planner")
-builder.add_conditional_edges(
-    "planner",
-    lambda s: s.action,
-    {"retrieve": "retriever", "answer_direct": "answer"},
-)
-builder.add_edge("retriever", "answer")
-builder.add_edge("answer",    END)
-
-graph_app = builder.compile()
-
 # --- Helpers to Get API Key ---
 def get_groq_api_key(header_key: Optional[str] = None) -> str:
     key = header_key or os.environ.get("GROQ_API_KEY")
@@ -294,7 +285,7 @@ async def upload_paper(
             raise HTTPException(status_code=400, detail="The PDF is too small or couldn't be chunked.")
 
         # Build vector store
-        vector_store = FAISSStore(chunks, meta)
+        vector_store = TfidfStore(chunks, meta)
         
         # Store in active papers
         ACTIVE_PAPERS[paper_id] = {
@@ -352,20 +343,23 @@ async def query_paper(req: QueryRequest):
         if req.paper_id not in ACTIVE_PAPERS:
             raise HTTPException(status_code=404, detail="Paper not found. Please upload it first.")
 
-        # Run state graph QA pipeline
-        inputs = {
-            "query": req.query,
-            "paper_id": req.paper_id,
-            "api_key": groq_key
-        }
-        
-        result = graph_app.invoke(inputs)
+        # Run the QA pipeline directly to avoid shipping a graph runtime.
+        state = ChatState(
+            query=req.query,
+            paper_id=req.paper_id,
+            api_key=groq_key,
+        )
+        state = node_detect_language(state)
+        state = node_planner(state)
+        if state.action == "retrieve":
+            state = node_retrieve(state)
+        state = node_answer(state)
         return {
-            "answer": result.get("answer"),
-            "lang_code": result.get("lang_code"),
-            "lang_name": result.get("lang_name"),
-            "action": result.get("action"),
-            "pages": list(set(d["page"] for d in (result.get("docs") or [])))
+            "answer": state.answer,
+            "lang_code": state.lang_code,
+            "lang_name": state.lang_name,
+            "action": state.action,
+            "pages": list(set(d["page"] for d in (state.docs or [])))
         }
 
     except Exception as e:
