@@ -14,6 +14,7 @@ from langdetect import detect
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # --- Load Environment Variables ---
 def load_env_vars():
@@ -370,6 +371,14 @@ async def query_paper(req: QueryRequest):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "active_papers": len(ACTIVE_PAPERS)}
+
+
+# Serve the frontend from the same entry point used by Vercel.
+app.mount(
+    "/",
+    StaticFiles(directory=Path(__file__).parent / "webui", html=True),
+    name="webui",
+)
 
 if __name__ == "__main__":
     import uvicorn
