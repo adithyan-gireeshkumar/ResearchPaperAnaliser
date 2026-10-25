@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   </head>
   <body>
     <div class="shell">
@@ -47,7 +48,10 @@
               <button id="clear-file" type="button" aria-label="Remove selected file">×</button>
             </div>
             <label class="key-label" for="api-key">Groq API key <span>(optional if set in .env)</span></label>
-            <input id="api-key" class="text-input" type="password" placeholder="gsk_..." autocomplete="off" />
+            <div class="input-with-button">
+              <input id="api-key" class="text-input" type="password" placeholder="gsk_..." autocomplete="off" />
+              <button type="button" id="toggle-key" class="inline-toggle" title="Show or hide API key" aria-label="Show or hide API key">👁</button>
+            </div>
             <button class="primary-button" id="upload-button" type="button" disabled>
               <span>Analyze paper</span><span>→</span>
             </button>
@@ -64,7 +68,7 @@
             <div class="loading-state" id="loading-state" hidden>
               <div class="spinner"></div>
               <span>Reading your paper...</span>
-              <small>Extracting structure and finding the important details</small>
+              <small>Extracting structure and analyzing key findings</small>
             </div>
             <div class="brief" id="brief" hidden>
               <div class="brief-header">
@@ -94,15 +98,26 @@
               </div>
               <div class="chat-section">
                 <div class="chat-heading">
-                  <div><span class="card-label">03 / EXPLORE</span><h3>Ask the paper</h3></div>
-                  <span class="language-hint">Answers grounded in your PDF</span>
+                  <div>
+                    <span class="card-label">03 / EXPLORE</span>
+                    <h3>Ask the paper</h3>
+                  </div>
+                  <span class="language-hint">Answers grounded in your PDF in any language</span>
+                </div>
+                <div class="suggested-chips" id="suggested-chips">
+                  <button type="button" class="chip" data-q="What is the core methodology and architecture?">Core methodology</button>
+                  <button type="button" class="chip" data-q="What are the key results, benchmarks, and metrics?">Key results</button>
+                  <button type="button" class="chip" data-q="Who are the authors and what problem does this paper address?">Authors & problem</button>
+                  <button type="button" class="chip" data-q="What are the main limitations and future directions?">Limitations & future work</button>
                 </div>
                 <div class="messages" id="messages">
-                  <div class="message assistant-message">Ask me about the methods, findings, authors, or anything else in the paper.</div>
+                  <div class="message assistant-message">
+                    <div class="message-body">Ask me about the methods, findings, authors, or anything else in the paper.</div>
+                  </div>
                 </div>
                 <form class="question-form" id="question-form">
                   <input id="question" type="text" placeholder="What is the central research question?" autocomplete="off" />
-                  <button type="submit" aria-label="Ask question">↑</button>
+                  <button id="ask-button" type="submit" aria-label="Ask question">↑</button>
                 </form>
               </div>
             </div>
